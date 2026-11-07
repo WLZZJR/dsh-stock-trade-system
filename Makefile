@@ -1,4 +1,4 @@
-.PHONY: lint format typecheck test test-integration audit secret-scan ci install-hooks check-config up down migrate
+.PHONY: lint format typecheck test test-integration audit secret-scan ci install-hooks check-config up down migrate seed
 PY_DIRS := apps packages tests database
 COMPOSE_FILE := deploy/compose/docker-compose.dev.yml
 # Load .env (if present) for runtime commands only; tests never read it.
@@ -52,3 +52,7 @@ down:
 migrate:
 	@test -f alembic.ini || { echo "missing alembic.ini (created in P1-10)"; exit 1; }
 	PYTHONPATH=packages:apps uv run $(ENV_FILE) alembic upgrade head
+
+# Idempotent reference data (currencies, countries, US venues, internal sources).
+seed:
+	PYTHONPATH=packages uv run $(ENV_FILE) python -m data_engine.seeding
