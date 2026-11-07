@@ -76,7 +76,8 @@ def test_users_email_unique_and_status_checked(db: Conn) -> None:
         _user(db)
     with pytest.raises(psycopg.errors.CheckViolation), db.transaction():
         db.execute(
-            "INSERT INTO users (email, password_hash, status) VALUES ('x@example.test', 'h', 'banned')"
+            "INSERT INTO users (email, password_hash, status) "
+            "VALUES ('x@example.test', 'h', 'banned')"
         )
     row = db.execute("SELECT status FROM users WHERE email = 'owner@example.test'").fetchone()
     assert row == ("active",)
