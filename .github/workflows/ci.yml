@@ -1,0 +1,87 @@
+# CI for GEI (Phase 1, D8). Jobs only call `make` targets so local `make ci`
+# and remote CI cannot drift. No secrets are required: everything uses
+# mock/fixture data. Third-party actions are pinned to commit SHAs.
+#
+# Added in later tasks (nothing to check yet):
+#   - migration round-trip + model drift check -> P1-19 (needs Alembic, P1-10)
+#   - canonical_hash vector matrix (Linux + Windows) -> P1-18
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: lint, typecheck, unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.7"
+      - run: uv sync --frozen
+      - run: make ci
+
+  integration:
+    name: integration tests (PostgreSQL 16)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Same digest-pinned image as deploy/compose/docker-compose.dev.yml.
+        image: postgres:16@sha256:933463a6c8eba2b9f5cd414138738cd8d5519cd2c471214c222652f547a66a32
+        env:
+          POSTGRES_USER: gei
+          POSTGRES_DB: gei
+          POSTGRES_PASSWORD: ci-only-ephemeral
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gei -d gei"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      GEI_DATABASE_URL: postgresql://gei:ci-only-ephemeral@127.0.0.1:5432/gei
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.7"
+      - run: uv sync --frozen
+      - run: make test-integration
+
+  audit:
+    name: dependency vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.7"
+      - run: uv sync --frozen
+      - run: make audit
+
+  secret-scan:
+    name: secret scan (full history)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: make secret-scan
