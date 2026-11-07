@@ -29,8 +29,10 @@ cp .env.example .env         # 然后把 .env 里的 change-me 改成你自己�
                              # 注意：GEI_POSTGRES_PASSWORD 与 GEI_DATABASE_URL 中的密码须一致
 make check-config            # 校验配置
 make up                      # 启动 postgres、redis、api（首次需要拉取镜像）
+make migrate                 # 建表（Alembic 迁移到最新版本）
+make seed                    # 写入币种、国家、美国交易场所、内部来源（可重复执行）
 curl http://127.0.0.1:8000/health/live      # {"status":"ok"}
-make test-integration        # 对真实 PostgreSQL 16 的集成测试
+make test-integration        # 对真实 PostgreSQL 16 的集成测试（用临时数据库，不碰开发库）
 make down                    # 停止服务（数据卷保留；如需清空数据，手动执行 docker compose 的 down -v）
 ```
 

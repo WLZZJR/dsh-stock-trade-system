@@ -6,7 +6,7 @@
 
 Global Equity Intelligence（GEI）：全球股票投资研究系统。分三档交付：MVP-1 美股确定性研究产品（**零 LLM 依赖**）→ MVP-2 Agent 与 MCP → MVP-3 DeepSeek Harness。**当前只实现当前档位，未经用户或项目负责人确认，不自动进入下一档或下一 Phase。**
 
-**当前阶段：Phase 1 进行中（计划已批准 2026-11-06；项目负责人于 2026-11-07 指示开始编码）。阶段 A（工程骨架，P1-01 ~ P1-07）实施中；阶段 B 起须在阶段 A 完成并由项目负责人确认后再开始。**
+**当前阶段：Phase 1 进行中（计划已批准 2026-11-06；项目负责人于 2026-11-07 指示开始编码）。阶段 A（工程骨架，P1-01 ~ P1-07）已完成；项目负责人于 2026-11-07 指示开始阶段 B，阶段 B（数据库与主数据，P1-10 ~ P1-19）已在本地分支实现；阶段 C（服务与接口，P1-20 起）须在阶段 B 评审后由项目负责人确认再开始。**
 
 ## 必读文档（开工前）
 
@@ -57,7 +57,9 @@ Global Equity Intelligence（GEI）：全球股票投资研究系统。分三档
 | `make secret-scan` | 密钥扫描（gitleaks，Docker 镜像，扫描 git 历史） |
 | `make check-config` | 校验配置，缺少必需环境变量时报错并退出 |
 | `make up` / `make down` | 启动 / 停止开发环境（postgres、redis、api），需要 `.env` |
-| `make migrate` | 数据库迁移（P1-10 起可用） |
+| `make migrate` | 把 `GEI_DATABASE_URL` 指向的数据库迁移到最新版本（Alembic，手写 SQL） |
+| `make seed` | 应用参考数据种子（币种、国家、美国交易场所、内部来源），可重复执行 |
+| `make check-migrations` | 迁移检查：逐版本 downgrade 还原、版本链、模式快照无漂移（需要 PostgreSQL） |
 | `make install-hooks` | 安装 pre-commit / pre-push 钩子（可选，需本人执行） |
 
 约定：测试数据一律为 fixture / mock；`.env` 不入库；新依赖的主版本变更须先跑全部测试。

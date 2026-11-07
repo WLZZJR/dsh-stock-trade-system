@@ -56,6 +56,7 @@ erDiagram
 | `identifiers` | `id`, `entity_type`, `entity_id`, `id_type`, `id_value`, `source_id`, `valid_from`, `valid_to` | ISIN/FIGI 等标识符映射（带排他约束与实体校验触发器） |
 | `market_calendars` | `id`, `venue_id`, `calendar_date`, `is_open`, `session_json` | 交易日历 |
 | `currencies` | `code`, `name`, `minor_unit` | ISO 4217 币种 |
+| `countries` | `code`, `alpha3`, `numeric_code`, `name` | ISO 3166-1 国家代码（Phase 1 新增的纯参考表；`country_code` 列不设外键） |
 | `fx_rates` | `base_currency`, `quote_currency`, `rate`, `as_of`, `source_id` | 汇率 |
 
 ### 15.2 来源与原始数据
@@ -269,6 +270,11 @@ BEGIN
       SELECT EXISTS(SELECT 1 FROM listings WHERE id = NEW.entity_id) INTO entity_exists;
     WHEN 'venue' THEN
       SELECT EXISTS(SELECT 1 FROM venues WHERE id = NEW.entity_id) INTO entity_exists;
+    ELSE
+      -- BEFORE 触发器先于 CHECK 约束执行；未知类型在此以 check_violation 拒绝，
+      -- 避免暴露 plpgsql 的 CASE_NOT_FOUND（Phase 1 实现时加固）
+      RAISE EXCEPTION 'Unknown identifier entity_type: %', NEW.entity_type
+        USING ERRCODE = 'check_violation';
   END CASE;
 
   IF NOT entity_exists THEN
@@ -860,3 +866,33 @@ CREATE TRIGGER agent_invocations_append_only
 ```
 
 删除工作区研究数据时，`agent_invocations` 随受审计的维护流程一并清理（见 16.1），不适用普通 DELETE。
+
+### 16.4 规范化哈希规则（Phase 1 计划 D10；实现：`packages/data_engine/canonical_hash.py`）
+
+快照 `content_hash`、清单项 `record_hash` 与 `ingest_log.request_hash` 一律用同一函数生成，输出为 SHA-256 的 64 位小写十六进制。规则固定如下，改动任何一条都会使历史哈希失效，必须新增版本而不是原地修改：
+
+1. 输入类型仅限：`null`、`bool`、`int`、`str`、`Decimal`、`datetime`（带时区）、`date`、`UUID`、`list` / `tuple`、键为字符串的 `dict`；**`float` 一律拒绝**，其他类型拒绝；
+2. 对象键递归按码点排序；分隔符为 `,` 与 `:`，无任何空白；非 ASCII 字符保持原样（不转义为 `\u`），整体编码为 UTF-8；
+3. `Decimal` 序列化为无指数、无尾随零的纯数字字符串（`1.10` 与 `1.1` 同值同哈希；零与 `-0` 均为 `"0"`）；`NaN` / `Infinity` 拒绝；
+4. `datetime` 必须带时区，换算为 UTC 后写作 `YYYY-MM-DDTHH:MM:SS[.ffffff]Z`（微秒为零时省略小数部分）；naive 时间拒绝；`date` 写作 `YYYY-MM-DD`；`UUID` 写作小写连字符形式；
+5. 日期与时间文本手工拼装，不使用 `strftime`（`%Y` 在不同平台的补零行为不同）；
+6. 已知性质：`Decimal`、`datetime`、`UUID` 都序列化为 JSON 字符串，与恰好相同文本的 `str` 同哈希；需要区分时，在被哈希的结构里写入类型或字段名；
+7. 固定测试向量见 `tests/unit/test_canonical_hash.py`，预期摘要由 `sha256sum` 对字面规范文本独立计算，不由实现自身生成。
+
+### 16.5 Phase 1 迁移、种子与迁移检查
+
+| 迁移 | 内容 |
+|---|---|
+| 0001 | `pgcrypto`、`btree_gist`、`trg_forbid_mutation()`、`currencies` |
+| 0002 | `workspaces`、`users`、`workspace_members`、`auth_sessions`、`audit_logs`（只追加触发器） |
+| 0003 | `issuers`、`securities`、`venues`、`listings`（GIST 排他约束） |
+| 0004 | `providers`、`data_sources`、`provider_entitlements`、`provider_coverage` |
+| 0005 | `identifiers`（排他约束、实体存在性触发器、主数据删除保护触发器） |
+| 0006 | `raw_payloads`、`ingest_log` |
+| 0007 | `data_snapshots`、`data_snapshot_items`（不可变触发器） |
+| 0008 | `countries`（ISO 3166-1 参考表） |
+
+- 迁移是手写 SQL（`op.execute`），每个迁移都有可用的 `downgrade`；
+- 种子位于 `database/seeds/`，不是迁移：只做 INSERT 且可重复执行（`ON CONFLICT DO NOTHING` / `WHERE NOT EXISTS`），用 `make seed` 应用；币种来自 SIX 发布的 ISO 4217 清单，国家来自 Debian iso-codes（LGPL-2.1-or-later 数据），出处与获取日期写在文件头，`scripts/generate_seed_sql.py` 可重新生成；
+- 迁移检查：`database/schema_snapshot.txt` 是声明的目标模式（列、约束、索引、触发器、函数体）。任何迁移改动模式而未同步快照，测试即失败；有意改动后用 `UPDATE_SCHEMA_SNAPSHOT=1 make test-integration` 重新生成并随迁移一起评审。另有逐版本检查：每个 `downgrade` 必须精确还原上一版本的模式；
+- `provider_entitlements.persistence_allowed = false` 时 `raw_payloads.retention` 必须为 `hash_only`：该规则需要 workspace 上下文，`raw_payloads` 本身没有，因此在 Phase 2 的摄取服务中强制，Phase 1 只在数据库保证两种留存状态与 `payload_json` 互斥。
