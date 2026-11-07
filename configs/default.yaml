@@ -1,0 +1,4 @@
+# Non-sensitive defaults. Secrets (database / Redis URLs, API keys) belong in
+# environment variables (see .env.example), never here.
+env: dev
+log_level: INFO

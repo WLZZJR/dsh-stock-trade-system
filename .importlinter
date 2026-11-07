@@ -1,0 +1,20 @@
+[importlinter]
+root_packages =
+    domain
+    application
+    data_engine
+    api
+include_external_packages = True
+
+[importlinter:contract:domain-is-framework-free]
+name = domain must not import frameworks or vendor SDKs (ADR-0001, D7)
+type = forbidden
+source_modules =
+    domain
+forbidden_modules =
+    fastapi
+    starlette
+    sqlalchemy
+    celery
+    redis
+    psycopg
