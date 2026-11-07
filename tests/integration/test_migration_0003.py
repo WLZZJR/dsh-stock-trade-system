@@ -30,7 +30,8 @@ def _security(db: Conn) -> object:
     issuer = _scalar(db, "INSERT INTO issuers (legal_name) VALUES ('Acme Corp') RETURNING id")
     return _scalar(
         db,
-        "INSERT INTO securities (issuer_id, security_type) VALUES (%s, 'common_stock') RETURNING id",
+        "INSERT INTO securities (issuer_id, security_type) "
+        "VALUES (%s, 'common_stock') RETURNING id",
         (issuer,),
     )
 
@@ -54,7 +55,8 @@ def _listing(
 ) -> object:
     return _scalar(
         db,
-        "INSERT INTO listings (security_id, venue_id, ticker, trading_currency, valid_from, valid_to) "
+        "INSERT INTO listings "
+        "(security_id, venue_id, ticker, trading_currency, valid_from, valid_to) "
         "VALUES (%s, %s, %s, 'USD', %s, %s) RETURNING id",
         (security, venue, ticker, valid_from, valid_to),
     )
