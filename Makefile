@@ -1,5 +1,5 @@
 .PHONY: lint format typecheck test test-integration audit secret-scan ci install-hooks check-config up down migrate
-PY_DIRS := apps packages tests
+PY_DIRS := apps packages tests database
 COMPOSE_FILE := deploy/compose/docker-compose.dev.yml
 # Load .env (if present) for runtime commands only; tests never read it.
 ENV_FILE := $(if $(wildcard .env),--env-file .env,)

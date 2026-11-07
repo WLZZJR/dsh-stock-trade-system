@@ -5,6 +5,7 @@ description = "Global Equity Intelligence (GEI)"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "alembic>=1.20.1",
     "fastapi>=0.162.0",
     "psycopg[binary]>=3.3.8",
     "pyyaml>=6.0.3",
