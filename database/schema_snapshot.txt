@@ -1,0 +1,351 @@
+extension btree_gist
+extension pgcrypto
+
+table audit_logs
+  column id uuid NOT NULL DEFAULT gen_random_uuid()
+  column workspace_id uuid NULL
+  column actor_type text NOT NULL
+  column actor_id uuid NULL
+  column action text NOT NULL
+  column resource_type text NOT NULL
+  column resource_id uuid NULL
+  column details_json jsonb NOT NULL DEFAULT '{}'::jsonb
+  column created_at timestamp with time zone NOT NULL DEFAULT now()
+  constraint audit_logs_actor_type_check: CHECK ((actor_type = ANY (ARRAY['user'::text, 'service'::text, 'system'::text])))
+  constraint audit_logs_pkey: PRIMARY KEY (id)
+  constraint audit_logs_workspace_id_fkey: FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE RESTRICT
+  index audit_logs_pkey: CREATE UNIQUE INDEX audit_logs_pkey ON public.audit_logs USING btree (id)
+  trigger audit_logs_append_only: CREATE TRIGGER audit_logs_append_only BEFORE DELETE OR UPDATE ON public.audit_logs FOR EACH ROW EXECUTE FUNCTION trg_forbid_mutation()
+
+table auth_sessions
+  column id uuid NOT NULL DEFAULT gen_random_uuid()
+  column user_id uuid NOT NULL
+  column token_hash character(64) NOT NULL
+  column created_at timestamp with time zone NOT NULL DEFAULT now()
+  column expires_at timestamp with time zone NOT NULL
+  column revoked_at timestamp with time zone NULL
+  constraint auth_sessions_pkey: PRIMARY KEY (id)
+  constraint auth_sessions_token_hash_key: UNIQUE (token_hash)
+  constraint auth_sessions_user_id_fkey: FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  index auth_sessions_pkey: CREATE UNIQUE INDEX auth_sessions_pkey ON public.auth_sessions USING btree (id)
+  index auth_sessions_token_hash_key: CREATE UNIQUE INDEX auth_sessions_token_hash_key ON public.auth_sessions USING btree (token_hash)
+
+table countries
+  column code character(2) NOT NULL
+  column alpha3 character(3) NOT NULL
+  column numeric_code character(3) NOT NULL
+  column name text NOT NULL
+  constraint countries_alpha3_key: UNIQUE (alpha3)
+  constraint countries_numeric_code_key: UNIQUE (numeric_code)
+  constraint countries_pkey: PRIMARY KEY (code)
+  index countries_alpha3_key: CREATE UNIQUE INDEX countries_alpha3_key ON public.countries USING btree (alpha3)
+  index countries_numeric_code_key: CREATE UNIQUE INDEX countries_numeric_code_key ON public.countries USING btree (numeric_code)
+  index countries_pkey: CREATE UNIQUE INDEX countries_pkey ON public.countries USING btree (code)
+
+table currencies
+  column code character(3) NOT NULL
+  column name text NOT NULL
+  column minor_unit smallint NOT NULL DEFAULT 2
+  constraint currencies_pkey: PRIMARY KEY (code)
+  index currencies_pkey: CREATE UNIQUE INDEX currencies_pkey ON public.currencies USING btree (code)
+
+table data_snapshot_items
+  column id uuid NOT NULL DEFAULT gen_random_uuid()
+  column snapshot_id uuid NOT NULL
+  column record_type text NOT NULL
+  column record_id uuid NULL
+  column range_ref_json jsonb NULL
+  column record_hash character(64) NOT NULL
+  column source_published_at timestamp with time zone NULL
+  column created_at timestamp with time zone NOT NULL DEFAULT now()
+  constraint chk_snapshot_item_ref: CHECK ((((record_type = 'market_bar_range'::text) AND (range_ref_json IS NOT NULL) AND (record_id IS NULL)) OR ((record_type <> 'market_bar_range'::text) AND (record_id IS NOT NULL))))
+  constraint data_snapshot_items_pkey: PRIMARY KEY (id)
+  constraint data_snapshot_items_record_type_check: CHECK ((record_type = ANY (ARRAY['financial_fact'::text, 'filing'::text, 'corporate_action'::text, 'fx_rate'::text, 'market_bar_range'::text, 'valuation_assumption'::text, 'peer_set'::text])))
+  constraint data_snapshot_items_snapshot_id_fkey: FOREIGN KEY (snapshot_id) REFERENCES data_snapshots(id) ON DELETE RESTRICT
+  index data_snapshot_items_pkey: CREATE UNIQUE INDEX data_snapshot_items_pkey ON public.data_snapshot_items USING btree (id)
+  index uq_snapshot_items_record: CREATE UNIQUE INDEX uq_snapshot_items_record ON public.data_snapshot_items USING btree (snapshot_id, record_type, record_id) WHERE (record_id IS NOT NULL)
+  trigger data_snapshot_items_immutable: CREATE TRIGGER data_snapshot_items_immutable BEFORE DELETE OR UPDATE ON public.data_snapshot_items FOR EACH ROW EXECUTE FUNCTION trg_forbid_mutation()
+
+table data_snapshots
+  column id uuid NOT NULL DEFAULT gen_random_uuid()
+  column workspace_id uuid NOT NULL
+  column snapshot_type text NOT NULL
+  column as_of timestamp with time zone NOT NULL
+  column schema_version text NOT NULL
+  column selection_policy jsonb NOT NULL
+  column manifest jsonb NOT NULL
+  column content_hash character(64) NOT NULL
+  column created_at timestamp with time zone NOT NULL DEFAULT now()
+  constraint data_snapshots_pkey: PRIMARY KEY (id)
+  constraint data_snapshots_workspace_id_fkey: FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE RESTRICT
+  index data_snapshots_pkey: CREATE UNIQUE INDEX data_snapshots_pkey ON public.data_snapshots USING btree (id)
+  trigger data_snapshots_immutable: CREATE TRIGGER data_snapshots_immutable BEFORE DELETE OR UPDATE ON public.data_snapshots FOR EACH ROW EXECUTE FUNCTION trg_forbid_mutation()
+
+table data_sources
+  column id uuid NOT NULL DEFAULT gen_random_uuid()
+  column provider_id uuid NULL
+  column source_name text NOT NULL
+  column source_type text NOT NULL
+  column source_url text NULL
+  column license_scope text NULL
+  column created_at timestamp with time zone NOT NULL DEFAULT now()
+  constraint data_sources_pkey: PRIMARY KEY (id)
+  constraint data_sources_provider_id_fkey: FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE RESTRICT
+  index data_sources_pkey: CREATE UNIQUE INDEX data_sources_pkey ON public.data_sources USING btree (id)
+
+table identifiers
+  column id uuid NOT NULL DEFAULT gen_random_uuid()
+  column entity_type text NOT NULL
+  column entity_id uuid NOT NULL
+  column id_type text NOT NULL
+  column id_value text NOT NULL
+  column source_id uuid NOT NULL
+  column valid_from timestamp with time zone NOT NULL DEFAULT '-infinity'::timestamp with time zone
+  column valid_to timestamp with time zone NOT NULL DEFAULT 'infinity'::timestamp with time zone
+  column observed_at timestamp with time zone NOT NULL DEFAULT now()
+  constraint chk_identifiers_valid_range: CHECK ((valid_from < valid_to))
+  constraint identifiers_entity_type_check: CHECK ((entity_type = ANY (ARRAY['issuer'::text, 'security'::text, 'listing'::text, 'venue'::text])))
+  constraint identifiers_entity_type_id_type_id_value_tstzrange_excl: EXCLUDE USING gist (entity_type WITH =, id_type WITH =, id_value WITH =, tstzrange(valid_from, valid_to, '[)'::text) WITH &&)
+  constraint identifiers_id_type_check: CHECK ((id_type = ANY (ARRAY['isin'::text, 'figi'::text, 'composite_figi'::text, 'share_class_figi'::text, 'cusip'::text, 'sedol'::text, 'lei'::text, 'cik'::text, 'local_code'::text, 'vendor_symbol'::text])))
+  constraint identifiers_pkey: PRIMARY KEY (id)
+  constraint identifiers_source_id_fkey: FOREIGN KEY (source_id) REFERENCES data_sources(id) ON DELETE RESTRICT
+  index identifiers_entity_type_id_type_id_value_tstzrange_excl: CREATE INDEX identifiers_entity_type_id_type_id_value_tstzrange_excl ON public.identifiers USING gist (entity_type, id_type, id_value, tstzrange(valid_from, valid_to, '[)'::text))
+  index identifiers_pkey: CREATE UNIQUE INDEX identifiers_pkey ON public.identifiers USING btree (id)
+  index idx_identifiers_entity: CREATE INDEX idx_identifiers_entity ON public.identifiers USING btree (entity_type, entity_id)
+  index idx_identifiers_lookup: CREATE INDEX idx_identifiers_lookup ON public.identifiers USING btree (id_type, id_value)
+  trigger check_identifier_entity_exists: CREATE TRIGGER check_identifier_entity_exists BEFORE INSERT OR UPDATE ON public.identifiers FOR EACH ROW EXECUTE FUNCTION trg_verify_identifier_entity()
+
+table ingest_log
+  column id uuid NOT NULL DEFAULT gen_random_uuid()
+  column provider_id uuid NOT NULL
+  column endpoint text NOT NULL
+  column request_hash text NOT NULL
+  column requested_at timestamp with time zone NOT NULL
+  column received_at timestamp with time zone NULL
+  column http_status integer NULL
+  column payload_id uuid NULL
+  column error_code text NULL
+  column error_message text NULL
+  column retry_count integer NOT NULL DEFAULT 0
+  column response_meta_json jsonb NOT NULL DEFAULT '{}'::jsonb
+  constraint ingest_log_payload_id_fkey: FOREIGN KEY (payload_id) REFERENCES raw_payloads(id) ON DELETE RESTRICT
+  constraint ingest_log_pkey: PRIMARY KEY (id)
+  constraint ingest_log_provider_id_fkey: FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE RESTRICT
+  index idx_ingest_log_provider_time: CREATE INDEX idx_ingest_log_provider_time ON public.ingest_log USING btree (provider_id, requested_at DESC)
+  index ingest_log_pkey: CREATE UNIQUE INDEX ingest_log_pkey ON public.ingest_log USING btree (id)
+
+table issuers
+  column id uuid NOT NULL DEFAULT gen_random_uuid()
+  column legal_name text NOT NULL
+  column common_name text NULL
+  column country_code character(2) NULL
+  column sector text NULL
+  column industry text NULL
+  column lei text NULL
+  column website text NULL
+  column created_at timestamp with time zone NOT NULL DEFAULT now()
+  column updated_at timestamp with time zone NOT NULL DEFAULT now()
+  constraint issuers_pkey: PRIMARY KEY (id)
+  index issuers_pkey: CREATE UNIQUE INDEX issuers_pkey ON public.issuers USING btree (id)
+  trigger issuers_block_delete_if_identified: CREATE TRIGGER issuers_block_delete_if_identified BEFORE DELETE ON public.issuers FOR EACH ROW EXECUTE FUNCTION trg_block_delete_if_identified('issuer')
+
+table listings
+  column id uuid NOT NULL DEFAULT gen_random_uuid()
+  column security_id uuid NOT NULL
+  column venue_id uuid NOT NULL
+  column ticker text NOT NULL
+  column trading_currency character(3) NOT NULL
+  column status text NOT NULL DEFAULT 'active'::text
+  column valid_from date NOT NULL DEFAULT CURRENT_DATE
+  column valid_to date NOT NULL DEFAULT '9999-12-31'::date
+  column created_at timestamp with time zone NOT NULL DEFAULT now()
+  constraint chk_listings_valid_range: CHECK ((valid_from < valid_to))
+  constraint listings_pkey: PRIMARY KEY (id)
+  constraint listings_security_id_fkey: FOREIGN KEY (security_id) REFERENCES securities(id) ON DELETE RESTRICT
+  constraint listings_status_check: CHECK ((status = ANY (ARRAY['active'::text, 'suspended'::text, 'delisted'::text])))
+  constraint listings_trading_currency_fkey: FOREIGN KEY (trading_currency) REFERENCES currencies(code)
+  constraint listings_venue_id_fkey: FOREIGN KEY (venue_id) REFERENCES venues(id) ON DELETE RESTRICT
+  constraint listings_venue_id_ticker_daterange_excl: EXCLUDE USING gist (venue_id WITH =, ticker WITH =, daterange(valid_from, valid_to, '[)'::text) WITH &&)
+  index idx_listings_ticker: CREATE INDEX idx_listings_ticker ON public.listings USING btree (ticker)
+  index listings_pkey: CREATE UNIQUE INDEX listings_pkey ON public.listings USING btree (id)
+  index listings_venue_id_ticker_daterange_excl: CREATE INDEX listings_venue_id_ticker_daterange_excl ON public.listings USING gist (venue_id, ticker, daterange(valid_from, valid_to, '[)'::text))
+  trigger listings_block_delete_if_identified: CREATE TRIGGER listings_block_delete_if_identified BEFORE DELETE ON public.listings FOR EACH ROW EXECUTE FUNCTION trg_block_delete_if_identified('listing')
+
+table provider_coverage
+  column provider_id uuid NOT NULL
+  column market_code text NOT NULL
+  column dataset text NOT NULL
+  column coverage_status text NOT NULL
+  column checked_at timestamp with time zone NOT NULL DEFAULT now()
+  constraint provider_coverage_coverage_status_check: CHECK ((coverage_status = ANY (ARRAY['supported'::text, 'partial'::text, 'unsupported'::text, 'unverified'::text])))
+  constraint provider_coverage_pkey: PRIMARY KEY (provider_id, market_code, dataset)
+  constraint provider_coverage_provider_id_fkey: FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE RESTRICT
+  index provider_coverage_pkey: CREATE UNIQUE INDEX provider_coverage_pkey ON public.provider_coverage USING btree (provider_id, market_code, dataset)
+
+table provider_entitlements
+  column id uuid NOT NULL DEFAULT gen_random_uuid()
+  column provider_id uuid NOT NULL
+  column workspace_id uuid NOT NULL
+  column license_type text NOT NULL
+  column allowed_use text NOT NULL
+  column persistence_allowed boolean NOT NULL DEFAULT false
+  column llm_transmission_allowed boolean NOT NULL DEFAULT false
+  column redistribution_allowed boolean NOT NULL DEFAULT false
+  column contract_version text NULL
+  column expires_at timestamp with time zone NULL
+  constraint provider_entitlements_pkey: PRIMARY KEY (id)
+  constraint provider_entitlements_provider_id_fkey: FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE RESTRICT
+  constraint provider_entitlements_provider_id_workspace_id_key: UNIQUE (provider_id, workspace_id)
+  constraint provider_entitlements_workspace_id_fkey: FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE RESTRICT
+  index provider_entitlements_pkey: CREATE UNIQUE INDEX provider_entitlements_pkey ON public.provider_entitlements USING btree (id)
+  index provider_entitlements_provider_id_workspace_id_key: CREATE UNIQUE INDEX provider_entitlements_provider_id_workspace_id_key ON public.provider_entitlements USING btree (provider_id, workspace_id)
+
+table providers
+  column id uuid NOT NULL DEFAULT gen_random_uuid()
+  column name text NOT NULL
+  column provider_type text NOT NULL
+  column status text NOT NULL DEFAULT 'active'::text
+  column base_url text NULL
+  column created_at timestamp with time zone NOT NULL DEFAULT now()
+  constraint providers_name_key: UNIQUE (name)
+  constraint providers_pkey: PRIMARY KEY (id)
+  index providers_name_key: CREATE UNIQUE INDEX providers_name_key ON public.providers USING btree (name)
+  index providers_pkey: CREATE UNIQUE INDEX providers_pkey ON public.providers USING btree (id)
+
+table raw_payloads
+  column id uuid NOT NULL DEFAULT gen_random_uuid()
+  column provider_id uuid NOT NULL
+  column payload_json jsonb NULL
+  column payload_hash character(64) NOT NULL
+  column retention text NOT NULL DEFAULT 'stored'::text
+  column first_received_at timestamp with time zone NOT NULL DEFAULT now()
+  column published_at timestamp with time zone NULL
+  column license_scope text NULL
+  constraint chk_raw_payload_retention: CHECK ((((retention = 'stored'::text) AND (payload_json IS NOT NULL)) OR ((retention = 'hash_only'::text) AND (payload_json IS NULL))))
+  constraint raw_payloads_pkey: PRIMARY KEY (id)
+  constraint raw_payloads_provider_id_fkey: FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE RESTRICT
+  constraint raw_payloads_provider_id_payload_hash_key: UNIQUE (provider_id, payload_hash)
+  constraint raw_payloads_retention_check: CHECK ((retention = ANY (ARRAY['stored'::text, 'hash_only'::text])))
+  index raw_payloads_pkey: CREATE UNIQUE INDEX raw_payloads_pkey ON public.raw_payloads USING btree (id)
+  index raw_payloads_provider_id_payload_hash_key: CREATE UNIQUE INDEX raw_payloads_provider_id_payload_hash_key ON public.raw_payloads USING btree (provider_id, payload_hash)
+
+table securities
+  column id uuid NOT NULL DEFAULT gen_random_uuid()
+  column issuer_id uuid NOT NULL
+  column security_type text NOT NULL
+  column share_class text NULL
+  column description text NULL
+  column nominal_currency character(3) NULL
+  column adr_ratio numeric(18,6) NULL
+  column created_at timestamp with time zone NOT NULL DEFAULT now()
+  constraint securities_issuer_id_fkey: FOREIGN KEY (issuer_id) REFERENCES issuers(id) ON DELETE RESTRICT
+  constraint securities_nominal_currency_fkey: FOREIGN KEY (nominal_currency) REFERENCES currencies(code)
+  constraint securities_pkey: PRIMARY KEY (id)
+  index securities_pkey: CREATE UNIQUE INDEX securities_pkey ON public.securities USING btree (id)
+  trigger securities_block_delete_if_identified: CREATE TRIGGER securities_block_delete_if_identified BEFORE DELETE ON public.securities FOR EACH ROW EXECUTE FUNCTION trg_block_delete_if_identified('security')
+
+table users
+  column id uuid NOT NULL DEFAULT gen_random_uuid()
+  column email text NOT NULL
+  column password_hash text NOT NULL
+  column status text NOT NULL DEFAULT 'active'::text
+  column created_at timestamp with time zone NOT NULL DEFAULT now()
+  column updated_at timestamp with time zone NOT NULL DEFAULT now()
+  constraint users_email_key: UNIQUE (email)
+  constraint users_pkey: PRIMARY KEY (id)
+  constraint users_status_check: CHECK ((status = ANY (ARRAY['active'::text, 'disabled'::text])))
+  index users_email_key: CREATE UNIQUE INDEX users_email_key ON public.users USING btree (email)
+  index users_pkey: CREATE UNIQUE INDEX users_pkey ON public.users USING btree (id)
+
+table venues
+  column id uuid NOT NULL DEFAULT gen_random_uuid()
+  column mic character varying(4) NULL
+  column name text NOT NULL
+  column country_code character(2) NULL
+  column timezone text NOT NULL
+  column created_at timestamp with time zone NOT NULL DEFAULT now()
+  constraint venues_mic_key: UNIQUE (mic)
+  constraint venues_pkey: PRIMARY KEY (id)
+  index venues_mic_key: CREATE UNIQUE INDEX venues_mic_key ON public.venues USING btree (mic)
+  index venues_pkey: CREATE UNIQUE INDEX venues_pkey ON public.venues USING btree (id)
+  trigger venues_block_delete_if_identified: CREATE TRIGGER venues_block_delete_if_identified BEFORE DELETE ON public.venues FOR EACH ROW EXECUTE FUNCTION trg_block_delete_if_identified('venue')
+
+table workspace_members
+  column workspace_id uuid NOT NULL
+  column user_id uuid NOT NULL
+  column role text NOT NULL
+  column created_at timestamp with time zone NOT NULL DEFAULT now()
+  constraint workspace_members_pkey: PRIMARY KEY (workspace_id, user_id)
+  constraint workspace_members_role_check: CHECK ((role = ANY (ARRAY['owner'::text, 'researcher'::text, 'viewer'::text])))
+  constraint workspace_members_user_id_fkey: FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  constraint workspace_members_workspace_id_fkey: FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+  index workspace_members_pkey: CREATE UNIQUE INDEX workspace_members_pkey ON public.workspace_members USING btree (workspace_id, user_id)
+
+table workspaces
+  column id uuid NOT NULL DEFAULT gen_random_uuid()
+  column name text NOT NULL
+  column settings_json jsonb NOT NULL DEFAULT '{}'::jsonb
+  column created_at timestamp with time zone NOT NULL DEFAULT now()
+  column updated_at timestamp with time zone NOT NULL DEFAULT now()
+  constraint workspaces_pkey: PRIMARY KEY (id)
+  index workspaces_pkey: CREATE UNIQUE INDEX workspaces_pkey ON public.workspaces USING btree (id)
+
+function trg_block_delete_if_identified()
+CREATE OR REPLACE FUNCTION public.trg_block_delete_if_identified()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM identifiers WHERE entity_type = TG_ARGV[0] AND entity_id = OLD.id
+          ) THEN
+            RAISE EXCEPTION '% % is referenced by identifiers', TG_ARGV[0], OLD.id
+              USING ERRCODE = 'foreign_key_violation';
+          END IF;
+          RETURN OLD;
+        END;
+        $function$
+
+function trg_forbid_mutation()
+CREATE OR REPLACE FUNCTION public.trg_forbid_mutation()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+        BEGIN
+          RAISE EXCEPTION '% is append-only; create a new version instead', TG_TABLE_NAME
+            USING ERRCODE = 'restrict_violation';
+        END;
+        $function$
+
+function trg_verify_identifier_entity()
+CREATE OR REPLACE FUNCTION public.trg_verify_identifier_entity()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+        DECLARE
+          entity_exists BOOLEAN;
+        BEGIN
+          CASE NEW.entity_type
+            WHEN 'issuer' THEN
+              SELECT EXISTS(SELECT 1 FROM issuers WHERE id = NEW.entity_id) INTO entity_exists;
+            WHEN 'security' THEN
+              SELECT EXISTS(SELECT 1 FROM securities WHERE id = NEW.entity_id) INTO entity_exists;
+            WHEN 'listing' THEN
+              SELECT EXISTS(SELECT 1 FROM listings WHERE id = NEW.entity_id) INTO entity_exists;
+            WHEN 'venue' THEN
+              SELECT EXISTS(SELECT 1 FROM venues WHERE id = NEW.entity_id) INTO entity_exists;
+            ELSE
+              -- BEFORE triggers run ahead of CHECK constraints, so reject unknown types here with
+              -- the same error code instead of leaking plpgsql's CASE_NOT_FOUND.
+              RAISE EXCEPTION 'Unknown identifier entity_type: %', NEW.entity_type
+                USING ERRCODE = 'check_violation';
+          END CASE;
+
+          IF NOT entity_exists THEN
+            RAISE EXCEPTION 'Referenced entity (%: %) does not exist',
+              NEW.entity_type, NEW.entity_id
+              USING ERRCODE = 'foreign_key_violation';
+          END IF;
+          RETURN NEW;
+        END;
+        $function$

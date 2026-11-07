@@ -24,7 +24,7 @@ def test_triggers_are_pull_request_and_push_to_main() -> None:
 
 
 def test_expected_jobs_exist() -> None:
-    assert {"checks", "integration", "audit", "secret-scan"} <= set(load()["jobs"])
+    assert {"checks", "integration", "migrations", "audit", "secret-scan"} <= set(load()["jobs"])
 
 
 def test_permissions_are_read_only() -> None:
@@ -47,10 +47,16 @@ def test_run_steps_only_call_make_or_setup_commands() -> None:
                 assert allowed.match(run.strip()), f"{job_name}: unexpected command {run!r}"
 
 
-def test_integration_postgres_image_matches_compose() -> None:
+def test_database_jobs_use_the_compose_postgres_image() -> None:
     compose_image = yaml.safe_load(COMPOSE.read_text())["services"]["postgres"]["image"]
-    ci_image = load()["jobs"]["integration"]["services"]["postgres"]["image"]
-    assert ci_image == compose_image
+    for job in ("integration", "migrations"):
+        ci_image = load()["jobs"][job]["services"]["postgres"]["image"]
+        assert ci_image == compose_image, job
+
+
+def test_migrations_job_runs_the_migration_check() -> None:
+    runs = [s.get("run") for s in load()["jobs"]["migrations"]["steps"]]
+    assert "make check-migrations" in runs
 
 
 def test_secret_scan_checks_full_history() -> None:

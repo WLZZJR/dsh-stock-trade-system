@@ -1,4 +1,4 @@
-.PHONY: lint format typecheck test test-integration audit secret-scan ci install-hooks check-config up down migrate seed
+.PHONY: lint format typecheck test test-integration audit secret-scan ci install-hooks check-config up down migrate seed check-migrations
 PY_DIRS := apps packages tests database
 COMPOSE_FILE := deploy/compose/docker-compose.dev.yml
 # Load .env (if present) for runtime commands only; tests never read it.
@@ -22,6 +22,11 @@ test:
 # Needs a real PostgreSQL 16: `make up`, then GEI_DATABASE_URL pointing at it.
 test-integration:
 	uv run $(ENV_FILE) pytest -m integration --no-cov
+
+# Migration check (plan D8 job 3): every downgrade restores the previous schema exactly, and the
+# head schema equals database/schema_snapshot.txt. Needs PostgreSQL like test-integration.
+check-migrations:
+	uv run $(ENV_FILE) pytest tests/unit/test_migration_files.py tests/integration/test_schema_drift.py --no-cov
 
 ci: lint typecheck test
 
