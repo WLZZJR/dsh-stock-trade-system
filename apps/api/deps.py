@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any
@@ -92,3 +93,8 @@ def require_session(
     if identity is None:
         raise ProblemError(problems.UNAUTHENTICATED, "Authentication required.")
     return identity
+
+
+def get_workspace_id(identity: Annotated[Identity, Depends(require_session)]) -> uuid.UUID:
+    """The caller's workspace. Taken from the session only, never from request input (P1-24)."""
+    return identity.workspace_id

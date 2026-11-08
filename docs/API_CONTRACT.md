@@ -38,6 +38,7 @@
 | 会话 | 令牌为 32 字节随机数；库中只存 SHA-256 摘要（`auth_sessions.token_hash`）；绝对过期；登出、禁用用户或直接撤销后立即失效；每次登录签发新令牌；只接受 Cookie，不接受 `Authorization` 头 |
 | 密码 | argon2id（库默认参数），登录时若参数过期则自动升级哈希；创建 Owner 时密码至少 12 个字符 |
 | 审计 | `auth.owner_created`、`auth.login_succeeded`、`auth.login_failed`（含内部原因 `unknown_user` / `disabled` / `bad_password`，不对外暴露）、`auth.login_throttled`、`auth.logout`；`details_json` 只含邮箱的 SHA-256 摘要，不含邮箱、密码或令牌 |
+| workspace 隔离（P1-24） | 所有 workspace 资源的归属只从会话取得（`api.deps.get_workspace_id`、`application.workspace.require_in_workspace`），不读取请求中的任何 workspace 参数（查询串、路径、请求体都不能指定）；列表在 SQL 中按 workspace 过滤；他人的资源与不存在的资源同样返回 404，不确认其存在。`tests/integration/test_workspace_isolation.py` 用两个真实 workspace 验证 |
 | 已知取舍 | 限流按账号计数：知道 Owner 邮箱的人可以让 Owner 在退避期内暂时无法登录（最长 15 分钟）。单用户自托管场景下接受这一点，以避免撞库；不按 IP 计数，因为反向代理后的来源地址不可靠 |
 
 ## 25. 核心 REST Endpoints
