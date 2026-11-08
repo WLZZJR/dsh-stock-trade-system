@@ -10,6 +10,7 @@ import psycopg
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from application import problems
@@ -94,3 +95,56 @@ def register_problem_handlers(app: FastAPI) -> None:
     app.add_exception_handler(ProblemError, _problem_error)
     app.add_exception_handler(RequestValidationError, _validation_error)
     app.add_exception_handler(StarletteHTTPException, _http_error)
+
+
+# --- OpenAPI documentation of the error contract -------------------------------------------
+
+_STATUS_DESCRIPTIONS = {
+    401: "Authentication required",
+    404: "Resource not found",
+    422: "Invalid request parameters",
+    429: "Too many requests",
+    503: "Service unavailable",
+}
+
+
+class ProblemOut(BaseModel):
+    """application/problem+json body (API_CONTRACT 25.4); extension members may follow."""
+
+    model_config = ConfigDict(extra="allow", title="Problem")
+
+    type: str
+    title: str
+    status: int
+    code: str
+    detail: str
+    trace_id: str
+
+
+def problem_responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
+    """``responses=`` for a route: which error statuses it can answer with."""
+    return {status: {"description": _STATUS_DESCRIPTIONS[status]} for status in statuses}
+
+
+def install_problem_openapi(app: FastAPI) -> None:
+    """Document every 4xx/5xx response as problem+json and drop FastAPI's default 422 schema."""
+    default_openapi = app.openapi
+
+    def openapi() -> dict[str, Any]:
+        schema = default_openapi()
+        components = schema.setdefault("components", {}).setdefault("schemas", {})
+        components["Problem"] = ProblemOut.model_json_schema()
+        for name in ("HTTPValidationError", "ValidationError"):
+            components.pop(name, None)
+        for item in schema.get("paths", {}).values():
+            for operation in item.values():
+                for status, response in operation.get("responses", {}).items():
+                    if int(status) >= 400:
+                        response["content"] = {
+                            "application/problem+json": {
+                                "schema": {"$ref": "#/components/schemas/Problem"}
+                            }
+                        }
+        return schema
+
+    app.openapi = openapi  # type: ignore[method-assign]

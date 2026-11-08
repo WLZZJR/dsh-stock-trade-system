@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from api.deps import get_instrument_repository, get_today
+from api.problem_http import problem_responses
 from application import problems
 from application.instrument_resolution import (
     InstrumentRepository,
@@ -65,7 +66,7 @@ def _match(match: InstrumentMatch) -> InstrumentMatchOut:
     return InstrumentMatchOut(**_instrument(match.record), match_confidence=match.confidence.value)  # type: ignore[arg-type]
 
 
-@router.get("/resolve", response_model=ResolveResponse)
+@router.get("/resolve", response_model=ResolveResponse, responses=problem_responses(422, 503))
 def resolve(
     repo: Annotated[InstrumentRepository, Depends(get_instrument_repository)],
     today: Annotated[date, Depends(get_today)],
@@ -87,7 +88,9 @@ def resolve(
     )
 
 
-@router.get("/{listing_id}", response_model=InstrumentOut)
+@router.get(
+    "/{listing_id}", response_model=InstrumentOut, responses=problem_responses(404, 422, 503)
+)
 def instrument_detail(
     listing_id: uuid.UUID,
     repo: Annotated[InstrumentRepository, Depends(get_instrument_repository)],

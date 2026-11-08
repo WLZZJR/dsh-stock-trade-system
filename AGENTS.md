@@ -6,7 +6,7 @@
 
 Global Equity Intelligence（GEI）：全球股票投资研究系统。分三档交付：MVP-1 美股确定性研究产品（**零 LLM 依赖**）→ MVP-2 Agent 与 MCP → MVP-3 DeepSeek Harness。**当前只实现当前档位，未经用户或项目负责人确认，不自动进入下一档或下一 Phase。**
 
-**当前阶段：Phase 1 进行中（计划已批准 2026-11-06；项目负责人于 2026-11-07 指示开始编码）。阶段 A（工程骨架，P1-01 ~ P1-07）已完成；项目负责人于 2026-11-07 指示开始阶段 B，阶段 B（数据库与主数据，P1-10 ~ P1-19）已在本地分支实现；阶段 C（服务与接口，P1-20 起）须在阶段 B 评审后由项目负责人确认再开始。**
+**当前阶段：Phase 1 进行中（计划已批准 2026-11-06；项目负责人于 2026-11-07 指示开始编码）。阶段 A（工程骨架，P1-01 ~ P1-07）已完成；阶段 B（数据库与主数据，P1-10 ~ P1-19）已评审并合并；项目负责人于 2026-11-08 指示开始阶段 C，阶段 C（服务与接口，P1-20 ~ P1-26）已在本地分支实现；阶段 D（收口，P1-30 ~ P1-31）须在阶段 C 评审后由项目负责人确认再开始。**
 
 ## 必读文档（开工前）
 
@@ -60,6 +60,7 @@ Global Equity Intelligence（GEI）：全球股票投资研究系统。分三档
 | `make migrate` | 把 `GEI_DATABASE_URL` 指向的数据库迁移到最新版本（Alembic，手写 SQL） |
 | `make seed` | 应用参考数据种子（币种、国家、美国交易场所、内部来源），可重复执行 |
 | `make create-owner EMAIL=…` | 创建唯一的 Owner 用户（无开放注册）；密码取自 `GEI_OWNER_PASSWORD` 或交互输入，不接受命令行参数；已有用户时拒绝 |
+| `make openapi` | 重写 OpenAPI 契约快照 `tests/contract/openapi_snapshot.json`；接口变更必须在同一提交里更新它，否则 `make ci` 失败 |
 | `make check-migrations` | 迁移检查：逐版本 downgrade 还原、版本链、模式快照无漂移（需要 PostgreSQL） |
 | `make install-hooks` | 安装 pre-commit / pre-push 钩子（可选，需本人执行） |
 

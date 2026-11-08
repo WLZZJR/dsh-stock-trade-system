@@ -80,6 +80,8 @@
 | `GET /health/live` | 进程存活即 200，不检查依赖 |
 | `GET /health/ready` | 依次检查 `postgres`（`SELECT 1`）、`redis`（`PING`）、`migrations`（库中 `alembic_version` 必须恰好等于镜像内迁移脚本的唯一 head）；每项 2 秒超时；全部通过返回 200 `{"status":"ok","checks":{"postgres":"ok","redis":"ok","migrations":"ok"}}`，任一失败返回 503 problem+json（`code=SERVICE_UNAVAILABLE`，附 `checks`，值只有 `ok` / `fail`）。**只说明哪一项失败，不说明原因**：主机名、端口、驱动报错、版本号都不出现在响应里，日志中也只记录异常类型。响应带 `Cache-Control: no-store` |
 
+**OpenAPI 与契约快照（P1-26）：** OpenAPI 文档由代码自动生成，所有 4xx/5xx 响应都记为 `application/problem+json`（共用 `Problem` 组件，不使用 FastAPI 默认的 `HTTPValidationError`）。已提交的快照是 `tests/contract/openapi_snapshot.json`；`tests/contract/test_openapi_snapshot.py` 把它与代码生成的文档逐字比较，**接口有任何变化都必须同时更新快照**（`make openapi` 重写，随改动一起提交），否则 `make ci` 失败。FastAPI 自带的公开 `/docs`、`/redoc`、`/openapi.json` 已关闭，文档只通过 `GET /api/v1/openapi.json` 提供，需要会话。
+
 ### 25.1 Resolve Instrument 示例
 
 `GET /api/v1/instruments/resolve?query=MSFT&market=US`

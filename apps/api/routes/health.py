@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Response
 
 from api.deps import get_readiness_probes
+from api.problem_http import problem_responses
 from application import problems
 from application.problems import ProblemError
 from application.readiness import check_readiness
@@ -23,7 +24,7 @@ def live() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@router.get("/ready")
+@router.get("/ready", responses=problem_responses(503))
 def ready(
     probes: Annotated[Mapping[str, Callable[[], bool]], Depends(get_readiness_probes)],
     response: Response,

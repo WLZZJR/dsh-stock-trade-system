@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
 
 from api.deps import SESSION_COOKIE, get_auth_service, get_settings, require_session
+from api.problem_http import problem_responses
 from application.auth import AuthService
 from application.config import Settings
 from domain.auth import Identity
@@ -46,7 +47,9 @@ def _cookie_flags(settings: Settings) -> dict[str, object]:
     }
 
 
-@public_router.post("/login", response_model=LoginResponse)
+@public_router.post(
+    "/login", response_model=LoginResponse, responses=problem_responses(401, 422, 429)
+)
 def login(
     body: LoginRequest,
     response: Response,

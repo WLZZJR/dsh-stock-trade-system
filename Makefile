@@ -1,4 +1,4 @@
-.PHONY: lint format typecheck test test-integration audit secret-scan ci install-hooks check-config up down migrate seed check-migrations create-owner
+.PHONY: lint format typecheck test test-integration audit secret-scan ci install-hooks check-config up down migrate seed check-migrations create-owner openapi
 PY_DIRS := apps packages tests database
 COMPOSE_FILE := deploy/compose/docker-compose.dev.yml
 # Load .env (if present) for runtime commands only; tests never read it.
@@ -66,3 +66,7 @@ seed:
 create-owner:
 	@test -n "$(EMAIL)" || { echo "usage: make create-owner EMAIL=you@example.com"; exit 1; }
 	PYTHONPATH=packages:apps uv run $(ENV_FILE) python -m api.manage create-owner --email "$(EMAIL)"
+
+# Rewrites the committed OpenAPI contract snapshot; commit it together with the API change.
+openapi:
+	PYTHONPATH=packages:apps uv run python -m api.openapi
