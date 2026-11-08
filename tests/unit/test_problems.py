@@ -61,3 +61,11 @@ def test_problem_error_carries_spec_detail_and_extensions() -> None:
 def test_extensions_cannot_overwrite_standard_members(reserved: str) -> None:
     with pytest.raises(ValueError, match=reserved):
         ProblemError(problems.INTERNAL_ERROR, "x", **{reserved: "spoofed"})
+
+
+def test_problem_error_can_carry_response_headers() -> None:
+    err = ProblemError(problems.RATE_LIMITED, "slow down", retry_after=30)
+    assert err.headers == {}
+    err.headers["Retry-After"] = "30"
+    assert err.headers == {"Retry-After": "30"}
+    assert err.extensions == {"retry_after": 30}

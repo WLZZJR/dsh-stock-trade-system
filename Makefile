@@ -1,4 +1,4 @@
-.PHONY: lint format typecheck test test-integration audit secret-scan ci install-hooks check-config up down migrate seed check-migrations
+.PHONY: lint format typecheck test test-integration audit secret-scan ci install-hooks check-config up down migrate seed check-migrations create-owner
 PY_DIRS := apps packages tests database
 COMPOSE_FILE := deploy/compose/docker-compose.dev.yml
 # Load .env (if present) for runtime commands only; tests never read it.
@@ -61,3 +61,8 @@ migrate:
 # Idempotent reference data (currencies, countries, US venues, internal sources).
 seed:
 	PYTHONPATH=packages uv run $(ENV_FILE) python -m data_engine.seeding
+
+# Creates the first (and only) Owner. Password: GEI_OWNER_PASSWORD or an interactive prompt.
+create-owner:
+	@test -n "$(EMAIL)" || { echo "usage: make create-owner EMAIL=you@example.com"; exit 1; }
+	PYTHONPATH=packages:apps uv run $(ENV_FILE) python -m api.manage create-owner --email "$(EMAIL)"

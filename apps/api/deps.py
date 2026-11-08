@@ -3,18 +3,24 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any
 
 import psycopg
-from fastapi import Depends, Request
+from argon2 import PasswordHasher
+from fastapi import Cookie, Depends, Request
 
 from application import problems
+from application.auth import AuthService
 from application.config import Settings
 from application.instrument_resolution import InstrumentRepository
 from application.problems import ProblemError
+from application.security import DEFAULT_HASHER
+from data_engine.auth_repository import PgAuthRepository
 from data_engine.instrument_repository import PgInstrumentRepository
+from domain.auth import Identity
 
+SESSION_COOKIE = "gei_session"
 CONNECT_TIMEOUT_SECONDS = 5  # a dead database host must not hang a request
 
 
@@ -52,3 +58,37 @@ def get_instrument_repository(
 
 def get_today() -> date:
     return datetime.now(UTC).date()
+
+
+def get_password_hasher() -> PasswordHasher:
+    return DEFAULT_HASHER
+
+
+def get_auth_service(
+    conn: Annotated[psycopg.Connection[Any], Depends(get_connection)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    hasher: Annotated[PasswordHasher, Depends(get_password_hasher)],
+) -> AuthService:
+    return AuthService(
+        PgAuthRepository(conn),
+        session_ttl=timedelta(minutes=settings.session_ttl_minutes),
+        hasher=hasher,
+    )
+
+
+def session_token(token: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None) -> str:
+    """The session cookie, or 401 before any database work happens."""
+    if not token:
+        raise ProblemError(problems.UNAUTHENTICATED, "Authentication required.")
+    return token
+
+
+def require_session(
+    token: Annotated[str, Depends(session_token)],
+    service: Annotated[AuthService, Depends(get_auth_service)],
+) -> Identity:
+    """Every business route depends on this; ``workspace_id`` is taken from the result only."""
+    identity = service.authenticate(token)
+    if identity is None:
+        raise ProblemError(problems.UNAUTHENTICATED, "Authentication required.")
+    return identity

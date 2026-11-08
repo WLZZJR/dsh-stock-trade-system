@@ -27,6 +27,7 @@ class Settings(BaseModel):
     # non-secret: may live in YAML, overridable by env
     env: Literal["dev", "test", "prod"] = "dev"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    session_ttl_minutes: int = Field(default=720, ge=5, le=43200)  # 12 h; at most 30 days
 
     # secret: environment only
     database_url: SecretStr = Field(min_length=1)

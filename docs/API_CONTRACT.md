@@ -24,12 +24,31 @@
 - 对 workspace 资源必须进行服务端归属校验；
 - 所有写操作记录 audit log。
 
+#### 24.1.1 Phase 1 实现：登录与会话（D1–D3，P1-23）
+
+| 项 | 规则 |
+|---|---|
+| 端点 | `POST /api/v1/auth/login`、`POST /api/v1/auth/logout`、`GET /api/v1/auth/me`；`/health/*` 在根路径，不需要会话 |
+| 访问控制 | `/api/v1` 下**只有 login 是公开的**，其余一律需要有效会话，否则 401 `UNAUTHENTICATED`（`tests/security/test_routes_require_session.py` 对 OpenAPI 中的每个操作强制这一点，新增公开路由必须显式修改该测试） |
+| 首个 Owner | 禁止开放注册；只能通过 `make create-owner EMAIL=…`（`python -m api.manage create-owner`）创建，密码来自 `GEI_OWNER_PASSWORD` 或交互输入，**不接受命令行参数**；已存在用户时拒绝；写审计 `auth.owner_created` |
+| 登录请求 | `{"email": "...", "password": "..."}`；`email` ≤ 254 字符，`password` 1–1024 字符（超出为 422，防止用超长输入放大哈希开销） |
+| 登录成功 | 200，`{"user": {user_id, email, role, workspace_id}, "expires_at": "..."}`；会话令牌只通过 `Set-Cookie: gei_session=…` 下发，**不在响应体中**；Cookie 为 `HttpOnly; SameSite=Lax; Path=/`，生产环境（`GEI_ENV=prod`）加 `Secure`；`Max-Age` 等于会话有效期（`GEI_SESSION_TTL_MINUTES`，默认 720，范围 5–43200）；`Cache-Control: no-store` |
+| 登录失败 | 401 `UNAUTHENTICATED`，**错误密码、账号不存在、账号被禁用三种情况响应相同**，且做等量的密码校验，不泄露账号是否存在 |
+| 登录限流 | 同一账号（按邮箱摘要）在 15 分钟窗口内、上次成功登录之后失败达 5 次，进入退避：延迟 30 秒起、逐次翻倍、上限 15 分钟。限流期间返回 429 `RATE_LIMITED`，带 `Retry-After` 头和 `retry_after` 字段，**即使密码正确也拒绝**，且不再校验密码、不计为失败。不存在的账号同样限流。失败计数取自只追加的审计日志，不另建表 |
+| 会话 | 令牌为 32 字节随机数；库中只存 SHA-256 摘要（`auth_sessions.token_hash`）；绝对过期；登出、禁用用户或直接撤销后立即失效；每次登录签发新令牌；只接受 Cookie，不接受 `Authorization` 头 |
+| 密码 | argon2id（库默认参数），登录时若参数过期则自动升级哈希；创建 Owner 时密码至少 12 个字符 |
+| 审计 | `auth.owner_created`、`auth.login_succeeded`、`auth.login_failed`（含内部原因 `unknown_user` / `disabled` / `bad_password`，不对外暴露）、`auth.login_throttled`、`auth.logout`；`details_json` 只含邮箱的 SHA-256 摘要，不含邮箱、密码或令牌 |
+| 已知取舍 | 限流按账号计数：知道 Owner 邮箱的人可以让 Owner 在退避期内暂时无法登录（最长 15 分钟）。单用户自托管场景下接受这一点，以避免撞库；不按 IP 计数，因为反向代理后的来源地址不可靠 |
+
 ## 25. 核心 REST Endpoints
 
 | Method | Path | 用途 | 响应 |
 |---|---|---|---|
 | GET | `/health/live` | 存活探针 | 200 |
 | GET | `/health/ready` | 依赖就绪探针 | 200/503 |
+| POST | `/auth/login` | 登录，经 Cookie 下发会话（见 24.1.1） | 200 / 401 / 422 / 429 |
+| POST | `/auth/logout` | 登出并撤销当前会话 | 204 / 401 |
+| GET | `/auth/me` | 当前用户与 workspace | 200 / 401 |
 | GET | `/instruments/resolve` | 证券消歧 | 200 |
 | GET | `/instruments/{listing_id}` | 上市证券详情 | 200 |
 | POST | `/screenings` | 执行筛选 | 200 或 202 |

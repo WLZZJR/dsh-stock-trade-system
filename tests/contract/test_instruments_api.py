@@ -11,11 +11,19 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
-from api.deps import get_instrument_repository, get_today
+from api.deps import get_instrument_repository, get_today, require_session
 from api.main import create_app
+from domain.auth import Identity
 from domain.instruments import InstrumentRecord
 
 TODAY = date(2026, 11, 8)
+IDENTITY = Identity(
+    session_id=uuid.uuid4(),
+    user_id=uuid.uuid4(),
+    email="owner@example.com",
+    workspace_id=uuid.uuid4(),
+    role="owner",
+)
 MSFT = InstrumentRecord(
     issuer_id=uuid.UUID("11111111-1111-1111-1111-111111111111"),
     security_id=uuid.UUID("22222222-2222-2222-2222-222222222222"),
@@ -84,6 +92,7 @@ def repo() -> StaticRepo:
 @pytest.fixture
 def client(repo: StaticRepo) -> Iterator[TestClient]:
     app = create_app()
+    app.dependency_overrides[require_session] = lambda: IDENTITY
     app.dependency_overrides[get_instrument_repository] = lambda: repo
     app.dependency_overrides[get_today] = lambda: TODAY
     yield TestClient(app, raise_server_exceptions=False)
@@ -206,6 +215,7 @@ def test_database_outage_is_503_without_leaking_the_driver_message() -> None:
             raise psycopg.OperationalError("connection to server at 10.0.0.5 password=hunter2")
 
     app = create_app()
+    app.dependency_overrides[require_session] = lambda: IDENTITY
     app.dependency_overrides[get_instrument_repository] = BrokenRepo
     app.dependency_overrides[get_today] = lambda: TODAY
     response = TestClient(app, raise_server_exceptions=False).get(
@@ -230,6 +240,7 @@ def test_unreachable_database_is_503_with_a_bounded_connect_timeout(
 
     monkeypatch.setattr("api.deps.psycopg.connect", refuse)
     app = create_app()
+    app.dependency_overrides[require_session] = lambda: IDENTITY
     app.state.settings = Settings(
         database_url="postgresql://gei:topsecretpw@db.internal/gei",  # type: ignore[arg-type]
         redis_url="redis://redis.internal/0",  # type: ignore[arg-type]

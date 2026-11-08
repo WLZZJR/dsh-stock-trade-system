@@ -74,3 +74,23 @@ def test_missing_yaml_file_is_a_config_error(tmp_path: Path) -> None:
 def test_repository_default_yaml_is_valid_and_secret_free() -> None:
     settings = load_settings(environ=REQUIRED_ENV)
     assert settings.env == "dev"
+
+
+def test_session_ttl_defaults_to_twelve_hours(tmp_path: Path) -> None:
+    settings = load_settings(yaml_path=write_yaml(tmp_path, ""), environ=REQUIRED_ENV)
+    assert settings.session_ttl_minutes == 720
+
+
+def test_session_ttl_can_be_set_from_env(tmp_path: Path) -> None:
+    env = {**REQUIRED_ENV, "GEI_SESSION_TTL_MINUTES": "60"}
+    settings = load_settings(yaml_path=write_yaml(tmp_path, ""), environ=env)
+    assert settings.session_ttl_minutes == 60
+
+
+@pytest.mark.parametrize("value", ["0", "4", "43201", "-5", "abc"])
+def test_session_ttl_outside_five_minutes_to_thirty_days_is_rejected(
+    tmp_path: Path, value: str
+) -> None:
+    env = {**REQUIRED_ENV, "GEI_SESSION_TTL_MINUTES": value}
+    with pytest.raises(ConfigError, match="session_ttl_minutes"):
+        load_settings(yaml_path=write_yaml(tmp_path, ""), environ=env)

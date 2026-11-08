@@ -56,7 +56,9 @@ def _trace_id(request: Request) -> str:
 
 async def _problem_error(request: Request, exc: Exception) -> JSONResponse:
     error = cast(ProblemError, exc)
-    return problem_response(error.spec, error.detail, _trace_id(request), error.extensions)
+    return problem_response(
+        error.spec, error.detail, _trace_id(request), error.extensions, error.headers
+    )
 
 
 async def _validation_error(request: Request, exc: Exception) -> JSONResponse:

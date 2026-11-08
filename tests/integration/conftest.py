@@ -32,6 +32,9 @@ def migrated_database() -> Iterator[URL]:
 def db(migrated_database: URL) -> Iterator[psycopg.Connection[tuple[object, ...]]]:
     """A connection inside a transaction that is always rolled back."""
     conn = psycopg.connect(psycopg_dsn(migrated_database))
+    # Open the transaction now: otherwise a first `with conn.transaction():` inside the code
+    # under test would BEGIN and COMMIT for real instead of using a savepoint, leaking data.
+    conn.execute("SELECT 1")
     try:
         yield conn
     finally:

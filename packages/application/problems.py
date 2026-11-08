@@ -67,3 +67,4 @@ class ProblemError(Exception):
         self.spec = spec
         self.detail = detail
         self.extensions = extensions
+        self.headers: dict[str, str] = {}  # e.g. Retry-After, set by the raiser

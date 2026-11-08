@@ -59,6 +59,7 @@ Global Equity Intelligence（GEI）：全球股票投资研究系统。分三档
 | `make up` / `make down` | 启动 / 停止开发环境（postgres、redis、api），需要 `.env` |
 | `make migrate` | 把 `GEI_DATABASE_URL` 指向的数据库迁移到最新版本（Alembic，手写 SQL） |
 | `make seed` | 应用参考数据种子（币种、国家、美国交易场所、内部来源），可重复执行 |
+| `make create-owner EMAIL=…` | 创建唯一的 Owner 用户（无开放注册）；密码取自 `GEI_OWNER_PASSWORD` 或交互输入，不接受命令行参数；已有用户时拒绝 |
 | `make check-migrations` | 迁移检查：逐版本 downgrade 还原、版本链、模式快照无漂移（需要 PostgreSQL） |
 | `make install-hooks` | 安装 pre-commit / pre-push 钩子（可选，需本人执行） |
 

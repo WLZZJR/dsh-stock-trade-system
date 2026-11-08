@@ -11,12 +11,20 @@ import pytest
 from fastapi.testclient import TestClient
 from masterdata import Builder
 
-from api.deps import get_connection
+from api.deps import get_connection, require_session
 from api.main import create_app
+from domain.auth import Identity
 
 pytestmark = pytest.mark.integration
 
 Conn = psycopg.Connection[tuple[object, ...]]
+IDENTITY = Identity(
+    session_id=uuid.uuid4(),
+    user_id=uuid.uuid4(),
+    email="owner@example.com",
+    workspace_id=uuid.uuid4(),
+    role="owner",
+)
 
 
 @pytest.fixture
@@ -27,6 +35,7 @@ def build(db: Conn) -> Builder:
 @pytest.fixture
 def client(db: Conn, build: Builder) -> Iterator[TestClient]:
     app = create_app()
+    app.dependency_overrides[require_session] = lambda: IDENTITY
     app.dependency_overrides[get_connection] = lambda: db  # same transaction as the test data
     yield TestClient(app, raise_server_exceptions=False)
 
