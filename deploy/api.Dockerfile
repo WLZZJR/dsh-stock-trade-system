@@ -17,4 +17,5 @@ ENV PYTHONPATH=/app/packages:/app/apps PATH="/app/.venv/bin:$PATH"
 RUN useradd --system --no-create-home gei
 USER gei
 EXPOSE 8000
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --no-access-log: uvicorn's own access log prints query strings unredacted; the app logs requests.
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
