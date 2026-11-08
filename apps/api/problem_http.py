@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from http import HTTPStatus
 from typing import Any, cast
 
+import psycopg
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -79,7 +80,15 @@ async def _http_error(request: Request, exc: Exception) -> JSONResponse:
     return problem_response(spec, detail, _trace_id(request), headers=error.headers)
 
 
+async def _database_unavailable(request: Request, _exc: Exception) -> JSONResponse:
+    # The driver message can contain host names and credentials: never expose it.
+    return problem_response(
+        problems.SERVICE_UNAVAILABLE, "The database is unavailable.", _trace_id(request)
+    )
+
+
 def register_problem_handlers(app: FastAPI) -> None:
+    app.add_exception_handler(psycopg.OperationalError, _database_unavailable)
     app.add_exception_handler(ProblemError, _problem_error)
     app.add_exception_handler(RequestValidationError, _validation_error)
     app.add_exception_handler(StarletteHTTPException, _http_error)

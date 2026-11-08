@@ -77,11 +77,31 @@
       "match_confidence": "high"
     }
   ],
-  "requires_user_selection": false
+  "requires_user_selection": false,
+  "truncated": false
 }
 ```
 
 以上为响应形状示例，不代表系统应硬编码该证券数据。若多个候选均匹配，返回 `requires_user_selection=true`，不得自行选择。
+
+**Phase 1 实现的消歧语义（P1-21 / P1-22）：**
+
+| 项 | 规则 |
+|---|---|
+| 参数 | `query` 必填，1–100 字符，不得全为空白或含控制字符；`market` 可选，ISO 3166-1 两位国家码（大小写不敏感，按所在交易场所的国家过滤）。不合法返回 422 `VALIDATION_ERROR` |
+| `market` 缺失 | **不设默认市场**，在所有市场中检索；候选多于一个即要求用户选择 |
+| 检索方式 | 12 位字母数字按 ISIN / FIGI（`figi`、`composite_figi`、`share_class_figi`）精确匹配；单词按 ticker 精确匹配（不区分大小写）；另按发行主体名称（`legal_name`、`common_name`）精确匹配与前缀匹配。不做模糊匹配 |
+| 候选范围 | 状态为 `active` 或 `suspended`，且 `valid_from <= 今日 < valid_to` 的上市记录（ticker 被复用后不会命中旧证券）；标识符须在今日有效。标识符可挂在 listing、security 或 issuer 上，命中后展开为其下的所有上市记录 |
+| `match_confidence` | `high`：标识符、ticker 或名称精确匹配；`medium`：名称前缀匹配。同一上市记录被多种方式命中时只返回一次，取最高置信度 |
+| 排序 | 置信度（强者在前）→ ticker → `venue_mic` → `listing_id`，结果确定 |
+| 多候选 | 候选数大于 1 即 `requires_user_selection=true`，服务端不选择 |
+| 无候选 | 200，`matches` 为空，`requires_user_selection=false` |
+| 上限 | 最多返回 20 条；超出时 `truncated=true`（同时 `requires_user_selection=true`） |
+| `identifiers` | `isin` 取证券级当前有效 ISIN；`figi` 取上市级当前有效 FIGI；没有则为 `null` |
+
+`GET /api/v1/instruments/{listing_id}`：返回单个上市记录，字段同上但没有 `match_confidence`。按 id 查询不受状态过滤，已退市的记录也可读取；不存在返回 404 `NOT_FOUND`，`listing_id` 不是 UUID 返回 422。
+
+两个端点的认证要求随 P1-23 加入；在此之前它们没有会话保护。
 
 ### 25.2 创建研究任务
 
