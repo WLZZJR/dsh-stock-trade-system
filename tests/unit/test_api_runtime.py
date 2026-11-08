@@ -52,3 +52,12 @@ def test_uvicorn_access_log_is_disabled_because_it_prints_query_strings() -> Non
         line for line in DOCKERFILE.read_text(encoding="utf-8").splitlines() if "uvicorn" in line
     )
     assert "--no-access-log" in command
+
+
+def test_image_ships_the_migration_scripts_that_readiness_compares_against() -> None:
+    copies = [
+        line.split()[1]
+        for line in DOCKERFILE.read_text(encoding="utf-8").splitlines()
+        if line.startswith("COPY ") and not line.startswith("COPY --from")
+    ]
+    assert "database" in copies

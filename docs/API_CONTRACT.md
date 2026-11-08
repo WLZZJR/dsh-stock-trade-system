@@ -73,6 +73,13 @@
 | POST | `/alerts` | 创建告警规则（MVP-1 仅站内） | 201 |
 | GET | `/data-sources` | 查看数据源状态 | 200 |
 
+**Phase 1 健康探针语义（P1-25）：** 两个探针都在根路径、公开、无需会话，且不返回任何业务数据。
+
+| 探针 | 规则 |
+|---|---|
+| `GET /health/live` | 进程存活即 200，不检查依赖 |
+| `GET /health/ready` | 依次检查 `postgres`（`SELECT 1`）、`redis`（`PING`）、`migrations`（库中 `alembic_version` 必须恰好等于镜像内迁移脚本的唯一 head）；每项 2 秒超时；全部通过返回 200 `{"status":"ok","checks":{"postgres":"ok","redis":"ok","migrations":"ok"}}`，任一失败返回 503 problem+json（`code=SERVICE_UNAVAILABLE`，附 `checks`，值只有 `ok` / `fail`）。**只说明哪一项失败，不说明原因**：主机名、端口、驱动报错、版本号都不出现在响应里，日志中也只记录异常类型。响应带 `Cache-Control: no-store` |
+
 ### 25.1 Resolve Instrument 示例
 
 `GET /api/v1/instruments/resolve?query=MSFT&market=US`
@@ -225,3 +232,15 @@
 ```
 
 错误必须区分：参数错误、证券歧义、数据缺失、授权失败、供应商限流、任务冲突、模型不适用、内部错误。
+
+**Phase 1 实现补充（P1-20）：**
+
+| 项 | 规则 |
+|---|---|
+| 媒体类型与字段 | 所有错误（含 404、405、422、500）都是 `application/problem+json`，必含 `type`、`title`、`status`、`code`、`detail`、`trace_id`；`type` 为 `https://example.invalid/problems/<code 小写连字符>`（占位域名，正式域名确定前不变）；扩展字段不得与这六个标准字段重名 |
+| 错误码 | `VALIDATION_ERROR`(422)、`AMBIGUOUS_INSTRUMENT`(409)、`MISSING_REQUIRED_FIELD`(422)、`UNAUTHENTICATED`(401)、`FORBIDDEN`(403)、`NOT_FOUND`(404)、`METHOD_NOT_ALLOWED`(405)、`RATE_LIMITED`(429，带 `Retry-After` 与 `retry_after`)、`TASK_CONFLICT`(409)、`MODEL_NOT_APPLICABLE`(422)、`SERVICE_UNAVAILABLE`(503)、`INTERNAL_ERROR`(500)；定义见 `packages/application/problems.py` |
+| `trace_id` | 每个请求一个；响应头 `X-Trace-Id` 与错误体中的 `trace_id` 相同；请求若带合法 UUID 形式的 `X-Trace-Id` 则沿用，否则（含任何可能用于日志注入的值）重新生成 |
+| 参数校验错误 | 422，附 `errors: [{"loc": [...], "type": "..."}]`，**只说明哪个参数、哪类错误，不回显提交的值**（值可能是密码或令牌） |
+| 未处理异常 | 500 `INTERNAL_ERROR`，`detail` 固定为通用文字，不含异常类型、消息或堆栈；完整信息只写入服务端日志（已脱敏） |
+| 日志 | 每个请求一行结构化 JSON（方法、路径、状态、耗时、`trace_id`），**不记录请求头、查询串或请求体**；`Authorization`、Cookie、密码、令牌、含口令的 URL 在字段、消息和堆栈中一律脱敏；容器内 uvicorn 自带访问日志已关闭（它会打印查询串） |
+

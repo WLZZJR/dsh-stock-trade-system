@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator, Mapping
 from datetime import UTC, date, datetime, timedelta
+from functools import cache
 from typing import Annotated, Any
 
 import psycopg
@@ -19,6 +20,12 @@ from application.problems import ProblemError
 from application.security import DEFAULT_HASHER
 from data_engine.auth_repository import PgAuthRepository
 from data_engine.instrument_repository import PgInstrumentRepository
+from data_engine.readiness_probes import (
+    expected_migration_head,
+    migrations_probe,
+    postgres_probe,
+    redis_probe,
+)
 from domain.auth import Identity
 
 SESSION_COOKIE = "gei_session"
@@ -98,3 +105,21 @@ def require_session(
 def get_workspace_id(identity: Annotated[Identity, Depends(require_session)]) -> uuid.UUID:
     """The caller's workspace. Taken from the session only, never from request input (P1-24)."""
     return identity.workspace_id
+
+
+@cache
+def _expected_head() -> str:
+    return expected_migration_head()
+
+
+def get_readiness_probes(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> Mapping[str, Callable[[], bool]]:
+    """What /health/ready checks. The URLs hold secrets and stay inside these closures."""
+    database_url = settings.database_url.get_secret_value()
+    redis_url = settings.redis_url.get_secret_value()
+    return {
+        "postgres": lambda: postgres_probe(database_url),
+        "redis": lambda: redis_probe(redis_url),
+        "migrations": lambda: migrations_probe(database_url, _expected_head()),
+    }

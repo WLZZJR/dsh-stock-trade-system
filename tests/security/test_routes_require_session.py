@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 from api.main import API_PREFIX, create_app
 
 PUBLIC_API_OPERATIONS = {("POST", f"{API_PREFIX}/auth/login")}
-NON_API_PATHS = {"/health/live"}
+NON_API_PATHS = {"/health/live", "/health/ready"}
 ROUTES_DIR = Path(__file__).resolve().parents[2] / "apps" / "api" / "routes"
 HTTP_METHODS = {"get", "post", "put", "patch", "delete"}
 
@@ -44,7 +44,7 @@ def test_the_api_has_operations_to_check() -> None:
     assert len(_api_operations()) >= 5  # login, logout, me, resolve, detail
 
 
-def test_only_health_live_exists_outside_the_api_prefix() -> None:
+def test_only_the_health_probes_exist_outside_the_api_prefix() -> None:
     outside = {p for _, p in _operations() if not p.startswith(API_PREFIX)}
     assert outside == NON_API_PATHS
 

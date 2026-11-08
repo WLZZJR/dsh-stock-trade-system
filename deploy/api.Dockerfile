@@ -12,6 +12,8 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY apps ./apps
 COPY packages ./packages
 COPY configs ./configs
+# /health/ready compares the database with the migration scripts shipped in the image.
+COPY database ./database
 
 ENV PYTHONPATH=/app/packages:/app/apps PATH="/app/.venv/bin:$PATH"
 RUN useradd --system --no-create-home gei
