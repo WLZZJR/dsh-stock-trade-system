@@ -18,6 +18,10 @@ services:
       retries: 10
 
   redis:
+    # Opt-in bundled Redis: enabled via COMPOSE_PROFILES=bundled in .env. Omit the profile to
+    # share an external Redis already running on the host (set GEI_REDIS_URL and
+    # GEI_REDIS_URL_API in .env; the password lives in .env only, never in this file).
+    profiles: ["bundled"]
     image: redis:8@sha256:f245f4c83b84a9e9a0588da1c9456e579455310f0945d5db52cd2ba27f2000cc
     ports:
       - "127.0.0.1:6379:6379"
@@ -33,14 +37,21 @@ services:
       dockerfile: deploy/api.Dockerfile
     environment:
       GEI_DATABASE_URL: postgresql://gei:${GEI_POSTGRES_PASSWORD:?set GEI_POSTGRES_PASSWORD in .env}@postgres:5432/gei
-      GEI_REDIS_URL: redis://redis:6379/0
+      # Default: bundled Redis service DNS. Override GEI_REDIS_URL_API in .env to use an
+      # external Redis on the host (reachable via the host.docker.internal mapping below).
+      GEI_REDIS_URL: ${GEI_REDIS_URL_API:-redis://redis:6379/0}
     ports:
       - "127.0.0.1:8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+        # The bundled Redis runs only under the "bundled" profile; an external Redis on the
+        # host needs no startup ordering.
+        required: false
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=2)"]
       interval: 5s
