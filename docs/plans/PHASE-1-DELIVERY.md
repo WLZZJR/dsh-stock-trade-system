@@ -1,6 +1,6 @@
 # PHASE-1-DELIVERY：Phase 1 交付说明（P1-30）
 
-> **状态：草稿 — 自动化证据已全部填齐（2026-11-09 / 11-12）。** 余下两项负责人动作：§8 条件 5 干净环境复核、条件 7 Windows 留档；完成后本文件升级为最终交付说明。
+> **状态：草稿 — 证据已齐（2026-11-09 / 11-12），条件 5 已按负责人认可的本机流程记入。** 唯一开放项：条件 7 的 Windows 实测留档（Linux 全过、期望值平台无关，见 §2.2）；若决定不再跑，按已知限制定稿本文件。
 > 日期：2026-11-09。对应计划：[PHASE-1-PLAN.md](PHASE-1-PLAN.md)；清单依据 [AGENTS.md](../../AGENTS.md)"每个 Phase 完成时提供"。
 
 ## 1. 已完成任务清单
@@ -97,10 +97,10 @@
 | 2 | 排他约束、实体存在性触发器、只追加触发器、`retention` CHECK 测试通过 | `tests/integration/test_migration_0002.py`（审计只追加）、`0005.py`（标识符排他与存在性）、`0006.py`（retention）、`0007.py`（快照不可变） | **通过**（2026-11-09 `make test-integration`：0002 共 9、0005 共 12、0006 共 10、0007 共 8 用例全过） |
 | 3 | ticker / 外部标识符的场所与有效期约束 | `test_same_ticker_different_venue_ok`、`test_same_venue_overlapping_ticker_rejected`、`test_ticker_reuse_after_delisting_ok`（0003）；`test_identifier_overlap_rejected` 等（0005） | **通过**（2026-11-09 `make test-integration`：0003 共 10、0005 共 12 用例全过） |
 | 4 | 单用户登录 / 会话 / 登出可用；无登录不能访问业务接口；`/health/*` 可用 | `tests/integration/test_api_auth.py`、`tests/security/test_routes_require_session.py`（对 OpenAPI 每个操作强制 401）、`tests/integration/test_api_ready.py`、`tests/contract/test_health_*.py` | **通过**（2026-11-12：test_api_auth 26 用例全过；401 强制与 health 契约含于 `make ci` 294 passed；`/health/ready` 含 Redis 探针在集成运行中全过——176 passed / 0 skipped；另实测 `curl /health/ready` 三项 ok） |
-| 5 | 新开发者按 README 在干净环境启动三服务并通过基础测试 | README 快速开始 + [deploy/compose/docker-compose.dev.yml](../../deploy/compose/docker-compose.dev.yml)；CI 集成作业用同一 `postgres:16` 镜像作 service container | 【待补：负责人本地复核记录】 |
+| 5 | 新开发者按 README 在干净环境启动三服务并通过基础测试 | README 快速开始 + [deploy/compose/docker-compose.dev.yml](../../deploy/compose/docker-compose.dev.yml)；CI 集成作业用同一 `postgres:16` 镜像作 service container | **通过（负责人认可，2026-11-12）**：本机（WSL2 Ubuntu）按 README 流程完整走通——`make up` → `make migrate`（0001→0008）→ `make seed`（4 个种子文件）→ `make test-integration`（176 passed / 0 skipped）→ `curl /health/ready` 三项 ok；跨机器干净环境未另行验证（已知局限） |
 | 6 | CI 绿色：lint、类型、单测与集成、迁移检查、漏洞扫描 | 本地 `make ci` / `make test-integration` / `make check-migrations` / `make audit` / `make secret-scan` 输出（[.github/workflows/ci.yml](../../.github/workflows/ci.yml) 与这些 make 目标等价，仅在负责人推送/发 PR 后运行） | **全部通过**（2026-11-09/12：`make ci` 294 passed / 176 deselected、覆盖 84%；`make test-integration` 176 passed / 0 skipped；`make check-migrations` 8 passed；`make audit` 与 `make secret-scan` 无发现） |
 | 7 | canonical_hash 固定向量跨平台一致 | `tests/unit/test_canonical_hash.py`：期望值独立以 `sha256sum` 计算、平台无关；浮点输入被拒 | Linux 通过（2026-11-09 `make test`，294 passed 含该用例）；Windows 留档缺失（见 §2.2） |
 
 ## 9. 结论
 
-阶段 A/B/C 全部任务与 P1-31 已完成。本地验证全部通过（2026-11-09/12）：`make ci`（294 passed / 176 deselected、覆盖率 84%）、`make test-integration`（176 passed / 0 skipped，含 Redis 就绪探针）、`make check-migrations`（8 passed）、`make audit`（无已知漏洞）、`make secret-scan`（无泄漏）、canonical_hash Linux 固定向量（27 passed），并实测 `curl /health/ready` 三项 ok。仍待负责人完成：条件 5 的干净环境复核、条件 7 的 Windows 留档。按 README"分支与合并约定"，GitHub Actions 结果是负责人推送后的确认步骤，不属本地交付证据。补齐 §8 各【待补】项后，本文件即为 Phase 1 最终交付说明。
+阶段 A/B/C 全部任务与 P1-31 已完成。本地验证全部通过（2026-11-09/12）：`make ci`（294 passed / 176 deselected、覆盖率 84%）、`make test-integration`（176 passed / 0 skipped，含 Redis 就绪探针）、`make check-migrations`（8 passed）、`make audit`（无已知漏洞）、`make secret-scan`（无泄漏）、canonical_hash Linux 固定向量（27 passed），并实测 `curl /health/ready` 三项 ok。条件 5 经负责人认可按本机全流程记入（跨机器未另行验证，已知局限）；条件 7 的 Windows 实测留档仍开放（Linux 全过、期望值平台无关，见 §2.2）。按 README"分支与合并约定"，GitHub Actions 结果是负责人推送后的确认步骤，不属本地交付证据。补齐 §8 各【待补】项后，本文件即为 Phase 1 最终交付说明。
